@@ -3,57 +3,91 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>時間割</title>
-
 <style>
 * {
     box-sizing: border-box;
 }
-
 body {
     margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
     background: #f5f5f7;
     color: #222;
 }
-
 header {
-    padding: 20px;
-    text-align: center;
     background: white;
-    font-size: 24px;
-    font-weight: bold;
+    padding: 18px 15px 12px;
+    text-align: center;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    border-bottom: 1px solid #ddd;
 }
-
+.title {
+    font-size: 23px;
+    font-weight: bold;
+    margin-bottom: 12px;
+}
+select {
+    width: 90%;
+    max-width: 400px;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid #ccc;
+    background: white;
+    font-size: 16px;
+}
+.controls {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+button {
+    border: none;
+    border-radius: 10px;
+    padding: 9px 13px;
+    font-size: 14px;
+    background: #007aff;
+    color: white;
+}
+button.gray {
+    background: #8e8e93;
+}
+button.red {
+    background: #ff3b30;
+}
 .timetable {
     display: grid;
-    grid-template-columns: 55px repeat(5, 1fr);
+    grid-template-columns: 48px repeat(5, minmax(70px, 1fr));
     gap: 2px;
     padding: 10px;
+    overflow-x: auto;
 }
-
 .cell {
-    min-height: 90px;
+    min-height: 92px;
     background: white;
     border-radius: 8px;
     padding: 5px;
     text-align: center;
 }
-
 .header {
-    min-height: 40px;
+    min-height: 38px;
     font-weight: bold;
     padding-top: 10px;
+    position: sticky;
+    top: 105px;
+    z-index: 5;
 }
-
 .period {
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: bold;
-    min-height: 90px;
 }
-
 .subject {
     cursor: pointer;
     display: flex;
@@ -61,62 +95,119 @@ header {
     justify-content: center;
     align-items: center;
 }
-
 .subject-name {
     font-weight: bold;
-    font-size: 14px;
+    font-size: 13px;
+    word-break: break-word;
 }
-
 .room {
     font-size: 11px;
-    color: #666;
+    color: #555;
     margin-top: 5px;
 }
-
-button {
-    margin: 10px;
-    padding: 12px 20px;
-    border: none;
-    border-radius: 10px;
-    background: #007aff;
-    color: white;
-    font-size: 16px;
+.empty {
+    color: #aaa;
+    font-size: 20px;
+}
+.info {
+    text-align: center;
+    color: #777;
+    font-size: 12px;
+    padding: 10px;
 }
 </style>
 </head>
-
 <body>
-
-<header>時間割</header>
-
+<header>
+<div class="title">📚 時間割</div>
+<select id="scheduleSelect"></select>
+<div class="controls">
+    <button onclick="addSchedule()">＋ 新規</button>
+    <button class="gray" onclick="renameSchedule()">名前変更</button>
+    <button class="gray" onclick="duplicateSchedule()">複製</button>
+    <button class="red" onclick="deleteSchedule()">削除</button>
+</div>
+</header>
 <div class="timetable" id="timetable"></div>
-
+<div class="info">
+授業をタップすると編集できます
+</div>
 <script>
-
+/* =========================
+   基本設定
+========================= */
 const days = ["月", "火", "水", "木", "金"];
 const periods = 7;
-
 const timetable = document.getElementById("timetable");
-
-function loadData() {
-    return JSON.parse(localStorage.getItem("timetable") || "{}");
+const scheduleSelect = document.getElementById("scheduleSelect");
+const STORAGE_KEY = "my_timetable_app_v2";
+/* =========================
+   データ読み込み
+========================= */
+function loadApp() {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+        return JSON.parse(saved);
+    }
+    return {
+        current: "schedule_1",
+        schedules: {
+            schedule_1: {
+                name: "2026年度 前期",
+                lessons: {}
+            }
+        }
+    };
 }
-
-function saveData(data) {
-    localStorage.setItem("timetable", JSON.stringify(data));
+/* =========================
+   データ保存
+========================= */
+function saveApp() {
+    localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify(app)
+    );
 }
-
+let app = loadApp();
+/* =========================
+   現在の時間割
+========================= */
+function currentSchedule() {
+    return app.schedules[app.current];
+}
+/* =========================
+   時間割一覧更新
+========================= */
+function updateScheduleSelect() {
+    scheduleSelect.innerHTML = "";
+    Object.keys(app.schedules).forEach(id => {
+        const option = document.createElement("option");
+        option.value = id;
+        option.textContent = app.schedules[id].name;
+        if (id === app.current) {
+            option.selected = true;
+        }
+        scheduleSelect.appendChild(option);
+    });
+}
+/* =========================
+   時間割切り替え
+========================= */
+scheduleSelect.addEventListener("change", function() {
+    app.current = this.value;
+    saveApp();
+    createTimetable();
+});
+/* =========================
+   時間割表示
+========================= */
 function createTimetable() {
-
-    const data = loadData();
-
+    updateScheduleSelect();
     timetable.innerHTML = "";
-
     // 左上
     const empty = document.createElement("div");
     empty.className = "cell header";
     timetable.appendChild(empty);
-
     // 曜日
     days.forEach(day => {
         const cell = document.createElement("div");
@@ -124,92 +215,187 @@ function createTimetable() {
         cell.textContent = day;
         timetable.appendChild(cell);
     });
-
-    // 授業
+    const lessons = currentSchedule().lessons;
+    // 各時限
     for (let p = 1; p <= periods; p++) {
-
         const period = document.createElement("div");
         period.className = "cell period";
         period.textContent = p + "限";
         timetable.appendChild(period);
-
+        // 各曜日
         for (let d = 0; d < days.length; d++) {
-
             const key = `${d}-${p}`;
-
             const cell = document.createElement("div");
             cell.className = "cell subject";
-
-            const lesson = data[key];
-
+            const lesson = lessons[key];
             if (lesson) {
-
+                cell.style.backgroundColor =
+                    lesson.color || "#ffffff";
                 const name = document.createElement("div");
                 name.className = "subject-name";
                 name.textContent = lesson.name;
-
                 const room = document.createElement("div");
                 room.className = "room";
                 room.textContent = lesson.room || "";
-
                 cell.appendChild(name);
                 cell.appendChild(room);
-
-                cell.style.backgroundColor = lesson.color || "white";
-
             } else {
-                cell.textContent = "＋";
+                const emptyText = document.createElement("div");
+                emptyText.className = "empty";
+                emptyText.textContent = "+";
+                cell.appendChild(emptyText);
             }
-
-            cell.onclick = () => editLesson(key);
-
+            cell.onclick = () => {
+                editLesson(key);
+            };
             timetable.appendChild(cell);
         }
     }
 }
-
+/* =========================
+   授業編集
+========================= */
 function editLesson(key) {
-
-    const data = loadData();
-
+    const lessons = currentSchedule().lessons;
+    const old = lessons[key];
     const name = prompt(
-        "授業名を入力\n（空欄で削除）",
-        data[key]?.name || ""
+        "授業名\n空欄にすると削除",
+        old?.name || ""
     );
-
-    if (name === null) return;
-
-    if (name === "") {
-        delete data[key];
-        saveData(data);
+    if (name === null) {
+        return;
+    }
+    // 削除
+    if (name.trim() === "") {
+        delete lessons[key];
+        saveApp();
         createTimetable();
         return;
     }
-
     const room = prompt(
         "教室",
-        data[key]?.room || ""
+        old?.room || ""
     );
-
+    if (room === null) {
+        return;
+    }
     const color = prompt(
-        "色（例：#dbeafe）",
-        data[key]?.color || "#ffffff"
+        "色\n例：#dbeafe\n白なら #ffffff",
+        old?.color || "#ffffff"
     );
-
-    data[key] = {
+    if (color === null) {
+        return;
+    }
+    lessons[key] = {
         name: name,
         room: room,
         color: color
     };
-
-    saveData(data);
-
+    saveApp();
     createTimetable();
 }
-
+/* =========================
+   新しい時間割
+========================= */
+function addSchedule() {
+    const name = prompt(
+        "新しい時間割の名前",
+        "新しい時間割"
+    );
+    if (!name || name.trim() === "") {
+        return;
+    }
+    const id =
+        "schedule_" +
+        Date.now() +
+        "_" +
+        Math.random()
+            .toString(36)
+            .substring(2, 10);
+    app.schedules[id] = {
+        name: name.trim(),
+        lessons: {}
+    };
+    app.current = id;
+    saveApp();
+    createTimetable();
+}
+/* =========================
+   名前変更
+========================= */
+function renameSchedule() {
+    const schedule = currentSchedule();
+    const name = prompt(
+        "時間割の名前",
+        schedule.name
+    );
+    if (!name || name.trim() === "") {
+        return;
+    }
+    schedule.name = name.trim();
+    saveApp();
+    createTimetable();
+}
+/* =========================
+   複製
+========================= */
+function duplicateSchedule() {
+    const original = currentSchedule();
+    const name = prompt(
+        "複製後の時間割名",
+        original.name + " コピー"
+    );
+    if (!name || name.trim() === "") {
+        return;
+    }
+    const id =
+        "schedule_" +
+        Date.now() +
+        "_" +
+        Math.random()
+            .toString(36)
+            .substring(2, 10);
+    // 完全コピー
+    app.schedules[id] = {
+        name: name.trim(),
+        lessons:
+            JSON.parse(
+                JSON.stringify(original.lessons)
+            )
+    };
+    app.current = id;
+    saveApp();
+    createTimetable();
+}
+/* =========================
+   削除
+========================= */
+function deleteSchedule() {
+    const keys = Object.keys(app.schedules);
+    if (keys.length <= 1) {
+        alert(
+            "最後の1つの時間割は削除できません。"
+        );
+        return;
+    }
+    const schedule = currentSchedule();
+    const ok = confirm(
+        `「${schedule.name}」を削除しますか？`
+    );
+    if (!ok) {
+        return;
+    }
+    delete app.schedules[app.current];
+    app.current = Object.keys(
+        app.schedules
+    )[0];
+    saveApp();
+    createTimetable();
+}
+/* =========================
+   初期表示
+========================= */
 createTimetable();
-
 </script>
-
 </body>
 </html>
