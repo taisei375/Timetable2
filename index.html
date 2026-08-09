@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>時間割</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #f5f5f7;
+    color: #222;
+}
+
+header {
+    padding: 20px;
+    text-align: center;
+    background: white;
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.timetable {
+    display: grid;
+    grid-template-columns: 55px repeat(5, 1fr);
+    gap: 2px;
+    padding: 10px;
+}
+
+.cell {
+    min-height: 90px;
+    background: white;
+    border-radius: 8px;
+    padding: 5px;
+    text-align: center;
+}
+
+.header {
+    min-height: 40px;
+    font-weight: bold;
+    padding-top: 10px;
+}
+
+.period {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    min-height: 90px;
+}
+
+.subject {
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.subject-name {
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.room {
+    font-size: 11px;
+    color: #666;
+    margin-top: 5px;
+}
+
+button {
+    margin: 10px;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 10px;
+    background: #007aff;
+    color: white;
+    font-size: 16px;
+}
+</style>
+</head>
+
+<body>
+
+<header>時間割</header>
+
+<div class="timetable" id="timetable"></div>
+
+<script>
+
+const days = ["月", "火", "水", "木", "金"];
+const periods = 7;
+
+const timetable = document.getElementById("timetable");
+
+function loadData() {
+    return JSON.parse(localStorage.getItem("timetable") || "{}");
+}
+
+function saveData(data) {
+    localStorage.setItem("timetable", JSON.stringify(data));
+}
+
+function createTimetable() {
+
+    const data = loadData();
+
+    timetable.innerHTML = "";
+
+    // 左上
+    const empty = document.createElement("div");
+    empty.className = "cell header";
+    timetable.appendChild(empty);
+
+    // 曜日
+    days.forEach(day => {
+        const cell = document.createElement("div");
+        cell.className = "cell header";
+        cell.textContent = day;
+        timetable.appendChild(cell);
+    });
+
+    // 授業
+    for (let p = 1; p <= periods; p++) {
+
+        const period = document.createElement("div");
+        period.className = "cell period";
+        period.textContent = p + "限";
+        timetable.appendChild(period);
+
+        for (let d = 0; d < days.length; d++) {
+
+            const key = `${d}-${p}`;
+
+            const cell = document.createElement("div");
+            cell.className = "cell subject";
+
+            const lesson = data[key];
+
+            if (lesson) {
+
+                const name = document.createElement("div");
+                name.className = "subject-name";
+                name.textContent = lesson.name;
+
+                const room = document.createElement("div");
+                room.className = "room";
+                room.textContent = lesson.room || "";
+
+                cell.appendChild(name);
+                cell.appendChild(room);
+
+                cell.style.backgroundColor = lesson.color || "white";
+
+            } else {
+                cell.textContent = "＋";
+            }
+
+            cell.onclick = () => editLesson(key);
+
+            timetable.appendChild(cell);
+        }
+    }
+}
+
+function editLesson(key) {
+
+    const data = loadData();
+
+    const name = prompt(
+        "授業名を入力\n（空欄で削除）",
+        data[key]?.name || ""
+    );
+
+    if (name === null) return;
+
+    if (name === "") {
+        delete data[key];
+        saveData(data);
+        createTimetable();
+        return;
+    }
+
+    const room = prompt(
+        "教室",
+        data[key]?.room || ""
+    );
+
+    const color = prompt(
+        "色（例：#dbeafe）",
+        data[key]?.color || "#ffffff"
+    );
+
+    data[key] = {
+        name: name,
+        room: room,
+        color: color
+    };
+
+    saveData(data);
+
+    createTimetable();
+}
+
+createTimetable();
+
+</script>
+
+</body>
+</html>
