@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>時間割メーカー</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Yu Gothic",sans-serif;background:#f5f6f8;color:#222}
+header{background:white;padding:14px;border-bottom:1px solid #ddd;position:sticky;top:0;z-index:5}
+h1{font-size:20px;margin:0 0 10px}.buttons{display:flex;gap:7px;flex-wrap:wrap}
+button{font:inherit;padding:8px 11px;border:1px solid #ccc;border-radius:8px;background:#fff}
+.primary{background:#222;color:#fff}.danger{color:#c22}
+main{max-width:1100px;margin:auto;padding:14px}.tabs{display:flex;gap:7px;overflow:auto;margin-bottom:12px}.tab{white-space:nowrap}.active{background:#222;color:#fff}
+.card{background:#fff;border:1px solid #ddd;border-radius:12px;padding:12px;margin-bottom:12px}.stats{display:flex;gap:8px;flex-wrap:wrap}
+.stat{background:#f0f1f3;padding:7px 10px;border-radius:8px}.gridwrap{overflow-x:auto}
+.grid{display:grid;grid-template-columns:52px repeat(5,minmax(125px,1fr));min-width:677px}
+.cell{min-height:78px;padding:5px;border-right:1px solid #ddd;border-bottom:1px solid #ddd}.head,.period{background:#fafafa;font-weight:bold}
+.head{text-align:center;min-height:42px}.period{display:flex;align-items:center;justify-content:center}
+.lesson{height:100%;min-height:66px;border-radius:8px;padding:7px;cursor:pointer}.name{font-weight:bold;font-size:14px}.teacher{font-size:11px;color:#666}.credit{font-size:11px;font-weight:bold;margin-top:4px}
+.empty{height:65px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:20px}.note{font-size:12px;color:#666;margin-top:9px}
+.modalbg{display:none;position:fixed;inset:0;background:#0008;z-index:10;align-items:center;justify-content:center;padding:15px}.modal{background:#fff;border-radius:14px;padding:18px;width:min(500px,100%)}
+.form{display:grid;gap:10px}label{font-size:13px;font-weight:bold}input,select{width:100%;padding:9px;border:1px solid #ccc;border-radius:8px;font:inherit}.row{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.colors{display:flex;gap:8px;flex-wrap:wrap}.color{width:31px;height:31px;border-radius:8px;border:2px solid transparent}.selected{border-color:#111}
+.modalactions{display:flex;justify-content:flex-end;gap:8px;margin-top:15px}
+</style>
+</head>
+<body>
+<header>
+<h1>📚 時間割メーカー</h1>
+<div class="buttons">
+<button class="primary" onclick="addSchedule()">＋ 時間割を追加</button>
+<button onclick="renameSchedule()">名前変更</button>
+<button class="danger" onclick="deleteSchedule()">削除</button>
+<button onclick="backup()">バックアップ</button>
+<button onclick="document.getElementById('file').click()">復元</button>
+<input id="file" type="file" accept=".json" hidden onchange="restore(event)">
+</div>
+</header>
+
+<main>
+<div id="tabs" class="tabs"></div>
+<div class="card">
+<div class="stats">
+<div class="stat">合計単位：<b id="total">0</b></div>
+<div class="stat">登録授業：<b id="count">0</b></div>
+</div>
+</div>
+<div class="card">
+<div class="gridwrap"><div id="grid" class="grid"></div></div>
+<div class="note">空いているコマをタップして授業を追加できます。同じ授業を週2回以上登録する場合も、それぞれのコマに登録できます。</div>
+</div>
+</main>
+
+<div id="modal" class="modalbg">
+<div class="modal">
+<h2 id="title">授業を追加</h2>
+<div class="form">
+<label>授業名<input id="name" placeholder="例：統計"></label>
+<div class="row">
+<label>曜日<select id="day"><option value="0">月</option><option value="1">火</option><option value="2">水</option><option value="3">木</option><option value="4">金</option></select></label>
+<label>時限<select id="period"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></label>
+</div>
+<div class="row">
+<label>単位数<input id="credits" type="number" min="0" step="0.5" value="2"></label>
+<label>担当教員<input id="teacher" placeholder="任意"></label>
+</div>
+<label>色</label><div id="colors" class="colors"></div>
+</div>
+<div class="modalactions"><button onclick="closeModal()">キャンセル</button><button class="primary" onclick="saveLesson()">保存</button></div>
+</div>
+</div>
+
+<script>
+const COLORS=["#dbeafe","#dcfce7","#fef3c7","#fce7f3","#ede9fe","#cffafe"];
+const DAYS=["月","火","水","木","金"];
+let db=JSON.parse(localStorage.getItem("timetable")||"null")||{
+ current:0,schedules:[{name:"時間割1",lessons:[]}]
+};
+let editId=null,selectedColor=0;
+
+function save(){localStorage.setItem("timetable",JSON.stringify(db))}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2)}
+function cur(){return db.schedules[db.current]}
+function esc(s){return String(s).replace(/[&<>"']/g,x=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[x]))}
+
+function render(){
+ renderTabs();renderGrid();renderStats();save();
+}
+function renderTabs(){
+ const e=document.getElementById("tabs");e.innerHTML="";
+ db.schedules.forEach((s,i)=>{
+  const b=document.createElement("button");
+  b.className="tab"+(i===db.current?" active":"");
+  b.textContent=s.name;b.onclick=()=>{db.current=i;render()};e.appendChild(b);
+ });
+}
+function renderGrid(){
+ const g=document.getElementById("grid");g.innerHTML="";
+ add(g,"","head");DAYS.forEach(x=>add(g,x,"head"));
+ for(let p=1;p<=5;p++){
+  add(g,p+"限","period");
+  for(let d=0;d<5;d++){
+   const cell=document.createElement("div");cell.className="cell";
+   const l=cur().lessons.find(x=>x.day===d&&x.period===p);
+   if(l){
+    const box=document.createElement("div");box.className="lesson";box.style.background=COLORS[l.color];
+    box.innerHTML='<div class="name">'+esc(l.name)+'</div>'+
+      (l.teacher?'<div class="teacher">'+esc(l.teacher)+'</div>':'')+
+      '<div class="credit">'+l.credits+'単位</div>';
+    box.onclick=()=>openModal(l);cell.appendChild(box);
+   }else{
+    const x=document.createElement("div");x.className="empty";x.textContent="+";
+    cell.appendChild(x);cell.onclick=()=>openModal(null,d,p);
+   }
+   g.appendChild(cell);
+  }
+ }
+}
+function add(parent,text,cls){const e=document.createElement("div");e.className="cell "+cls;e.textContent=text;parent.appendChild(e)}
+function renderStats(){
+ const a=cur().lessons;
+ document.getElementById("total").textContent=a.reduce((s,x)=>s+Number(x.credits||0),0);
+ document.getElementById("count").textContent=a.length;
+}
+
+function openModal(l,d=0,p=1){
+ editId=l?.id||null;selectedColor=l?.color??0;
+ document.getElementById("title").textContent=l?"授業を編集":"授業を追加";
+ document.getElementById("name").value=l?.name||"";
+ document.getElementById("day").value=l?.day??d;
+ document.getElementById("period").value=l?.period??p;
+ document.getElementById("credits").value=l?.credits??2;
+ document.getElementById("teacher").value=l?.teacher||"";
+ const e=document.getElementById("colors");e.innerHTML="";
+ COLORS.forEach((c,i)=>{
+  const b=document.createElement("button");b.type="button";b.className="color"+(i===selectedColor?" selected":"");
+  b.style.background=c;b.onclick=()=>{selectedColor=i;document.querySelectorAll(".color").forEach(x=>x.classList.remove("selected"));b.classList.add("selected")};
+  e.appendChild(b);
+ });
+ document.getElementById("modal").style.display="flex";
+}
+function closeModal(){document.getElementById("modal").style.display="none"}
+function saveLesson(){
+ const name=document.getElementById("name").value.trim();
+ if(!name)return alert("授業名を入力してください");
+ const d=+document.getElementById("day").value,p=+document.getElementById("period").value;
+ const s=cur(),conflict=s.lessons.find(x=>x.day===d&&x.period===p&&x.id!==editId);
+ if(conflict)return alert("そのコマには「"+conflict.name+"」が入っています。");
+ const obj={
+  id:editId||uid(),name,day:d,period:p,
+  credits:+document.getElementById("credits").value||0,
+  teacher:document.getElementById("teacher").value.trim(),
+  color:selectedColor
+ };
+ if(editId){s.lessons[s.lessons.findIndex(x=>x.id===editId)]=obj}else s.lessons.push(obj);
+ closeModal();render();
+}
+function addSchedule(){
+ const n=prompt("時間割名","時間割"+(db.schedules.length+1));
+ if(n?.trim()){db.schedules.push({name:n.trim(),lessons:[]});db.current=db.schedules.length-1;render()}
+}
+function renameSchedule(){
+ const n=prompt("時間割名",cur().name);if(n?.trim()){cur().name=n.trim();render()}
+}
+function deleteSchedule(){
+ if(db.schedules.length===1)return alert("最後の時間割は削除できません。");
+ if(confirm("「"+cur().name+"」を削除しますか？")){db.schedules.splice(db.current,1);db.current=Math.max(0,db.current-1);render()}
+}
+function backup(){
+ const a=document.createElement("a"),b=new Blob([JSON.stringify(db,null,2)],{type:"application/json"});
+ a.href=URL.createObjectURL(b);a.download="時間割バックアップ.json";a.click();URL.revokeObjectURL(a.href);
+}
+function restore(e){
+ const f=e.target.files[0];if(!f)return;
+ const r=new FileReader();
+ r.onload=()=>{try{const x=JSON.parse(r.result);if(!x.schedules)throw 0;db=x;render();alert("復元しました")}catch{alert("正しいバックアップではありません")}};
+ r.readAsText(f);e.target.value="";
+}
+document.getElementById("modal").onclick=e=>{if(e.target.id==="modal")closeModal()};
+render();
+</script>
+</body>
+</html>
